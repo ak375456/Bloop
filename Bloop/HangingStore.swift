@@ -21,6 +21,7 @@ enum HangingStore {
         HangingCharacter(name: "Easter Egg", imageName: "easter_egg_hang"),
         HangingCharacter(name: "Elf", imageName: "elf_hang"),
         HangingCharacter(name: "Joddy Hops", imageName: "joddy_hops_hang"),
+        HangingCharacter(name: "Sloth", imageName: "sloth_hang"),
         HangingCharacter(name: "Labubu", imageName: "labubu_hang"),
         HangingCharacter(name: "Puffin", imageName: "puffin_hang"),
         HangingCharacter(name: "Santa", imageName: "santa_clause_hang"),

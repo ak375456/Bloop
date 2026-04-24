@@ -67,108 +67,12 @@ struct ContentView: View {
                         .padding(24)
                     }
                 } else {
-                    ScrollView {
-                        VStack(spacing: 0) {
-                            if !HangingStore.all.isEmpty {
-                                LazyVGrid(columns: columns, spacing: 20) {
-                                    ForEach(HangingStore.all) { character in
-                                        let isHanging = walker.isHanging(characterID: character.id)
-                                        HangerCard(
-                                            character: character,
-                                            isSelected: selectedHangerID == character.id,
-                                            isHanging: isHanging
-                                        ) {
-                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) {
-                                                selectedHangerID = selectedHangerID == character.id ? nil : character.id
-                                            }
-                                        } onPlay: {
-                                            walker.toggleHang(for: character)
-                                            if walker.isHanging(characterID: character.id) {
-                                                withAnimation { selectedHangerID = character.id }
-                                            }
-                                        }
-                                    }
-                                }
-                                .padding(.horizontal, 24)
-                                .padding(.top, 24)
-                            }
-
-                            if !customStore.characters.isEmpty {
-                                if !HangingStore.all.isEmpty {
-                                    HStack {
-                                        Text("Custom")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                        VStack { Divider() }
-                                    }
-                                    .padding(.horizontal, 24)
-                                    .padding(.top, 16)
-                                    .padding(.bottom, 8)
-                                }
-
-                                LazyVGrid(columns: columns, spacing: 20) {
-                                    ForEach(customStore.characters) { character in
-                                        let isHanging = walker.isHanging(characterID: character.id)
-                                        CustomHangerCard(
-                                            character: character,
-                                            isSelected: selectedHangerID == character.id,
-                                            isHanging: isHanging
-                                        ) {
-                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) {
-                                                selectedHangerID = selectedHangerID == character.id ? nil : character.id
-                                            }
-                                        } onPlay: {
-                                            walker.toggleHangCustom(for: character)
-                                            if walker.isHanging(characterID: character.id) {
-                                                withAnimation { selectedHangerID = character.id }
-                                            }
-                                        } onDelete: {
-                                            walker.stopHanging(characterID: character.id)
-                                            customStore.delete(character)
-                                        }
-                                    }
-                                }
-                                .padding(.horizontal, 24)
-                                .padding(.top, HangingStore.all.isEmpty ? 24 : 0)
-                            }
-
-                            if HangingStore.all.isEmpty && customStore.characters.isEmpty {
-                                VStack(spacing: 16) {
-                                    Spacer(minLength: 40)
-                                    Image(systemName: "figure.arms.open")
-                                        .font(.system(size: 40))
-                                        .foregroundStyle(.secondary)
-                                    Text("No hangers yet")
-                                        .font(.headline)
-                                        .foregroundStyle(.secondary)
-                                    Button {
-                                        showCreateHanger = true
-                                    } label: {
-                                        Label("Create Custom Character", systemImage: "plus.circle.fill")
-                                            .frame(minWidth: 200)
-                                    }
-                                    .buttonStyle(.borderedProminent)
-                                    .controlSize(.large)
-                                    Spacer()
-                                }
-                                .frame(maxWidth: .infinity)
-                            } else {
-                                Button {
-                                    showCreateHanger = true
-                                } label: {
-                                    Label("Create Custom Character", systemImage: "plus.circle.fill")
-                                        .frame(minWidth: 200)
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .controlSize(.large)
-                                .padding(.top, 20)
-                                .padding(.bottom, 24)
-                            }
-                        }
-                    }
-                    .sheet(isPresented: $showCreateHanger) {
-                        CreateHangerView(store: customStore)
-                    }
+                    HangersTabView(
+                        selectedHangerID: $selectedHangerID,
+                        showCreateHanger: $showCreateHanger,
+                        customStore: customStore
+                    )
+                    .environmentObject(walker)
                 }
             }
             .navigationTitle(activeTab == .walkers ? "Bloop" : "Hangers")
@@ -191,6 +95,160 @@ struct ContentView: View {
         .frame(minWidth: 640, minHeight: 450)
         .sheet(isPresented: $showSettings) {
             SettingsView()
+        }
+    }
+}
+
+// MARK: - Hangers Tab (extracted for clarity)
+
+private struct HangersTabView: View {
+    @Binding var selectedHangerID: UUID?
+    @Binding var showCreateHanger: Bool
+    @ObservedObject var customStore: CustomCharacterStore
+    @EnvironmentObject var walker: MenuBarWalker
+
+    let columns = [GridItem(.adaptive(minimum: 140, maximum: 200), spacing: 16)]
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+
+                // ── Hero CTA ── always visible at top, never buried
+                CreateHeroBanner { showCreateHanger = true }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 20)
+                    .padding(.bottom, 24)
+
+                // ── Custom characters (user's own content, shown first) ──
+                if !customStore.characters.isEmpty {
+                    SectionDivider(label: "My characters")
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 12)
+
+                    LazyVGrid(columns: columns, spacing: 16) {
+                        ForEach(customStore.characters) { character in
+                            let isHanging = walker.isHanging(characterID: character.id)
+                            CustomHangerCard(
+                                character: character,
+                                isSelected: selectedHangerID == character.id,
+                                isHanging: isHanging
+                            ) {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) {
+                                    selectedHangerID = selectedHangerID == character.id ? nil : character.id
+                                }
+                            } onPlay: {
+                                walker.toggleHangCustom(for: character)
+                                if walker.isHanging(characterID: character.id) {
+                                    withAnimation { selectedHangerID = character.id }
+                                }
+                            } onDelete: {
+                                walker.stopHanging(characterID: character.id)
+                                customStore.delete(character)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 28)
+                }
+
+                // ── Built-in characters (secondary, shown after custom) ──
+                if !HangingStore.all.isEmpty {
+                    SectionDivider(label: "Built-in characters")
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 12)
+
+                    LazyVGrid(columns: columns, spacing: 16) {
+                        ForEach(HangingStore.all) { character in
+                            let isHanging = walker.isHanging(characterID: character.id)
+                            HangerCard(
+                                character: character,
+                                isSelected: selectedHangerID == character.id,
+                                isHanging: isHanging
+                            ) {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.65)) {
+                                    selectedHangerID = selectedHangerID == character.id ? nil : character.id
+                                }
+                            } onPlay: {
+                                walker.toggleHang(for: character)
+                                if walker.isHanging(characterID: character.id) {
+                                    withAnimation { selectedHangerID = character.id }
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.bottom, 24)
+                }
+            }
+        }
+        .sheet(isPresented: $showCreateHanger) {
+            CreateHangerView(store: customStore)
+        }
+    }
+}
+
+// MARK: - Hero Create Banner
+
+private struct CreateHeroBanner: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.accentColor)
+                        .frame(width: 40, height: 40)
+                    Image(systemName: "plus.circle.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.white)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Create your own hanger")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.primary)
+                    Text("Upload any image — it hangs from the menu bar")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+
+                Spacer()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            .background(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.08))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .strokeBorder(Color.accentColor.opacity(0.25), lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Section Divider
+
+private struct SectionDivider: View {
+    let label: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(label)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.4)
+            Rectangle()
+                .frame(height: 0.5)
+                .foregroundStyle(Color.secondary.opacity(0.3))
         }
     }
 }
@@ -535,7 +593,17 @@ private struct CustomHangerCard: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                // Subtle accent tint to visually distinguish custom cards
+                .fill(isSelected
+                      ? Color.accentColor.opacity(0.06)
+                      : Color(nsColor: .controlBackgroundColor))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(
+                            isSelected ? Color.accentColor.opacity(0.4) : Color.clear,
+                            lineWidth: 1.5
+                        )
+                )
                 .shadow(color: .black.opacity(isSelected ? 0.18 : 0.07),
                         radius: isSelected ? 16 : 6, y: isSelected ? 8 : 2)
 
