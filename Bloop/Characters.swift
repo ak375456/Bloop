@@ -4,17 +4,23 @@
 //
 //  Data model for a walking character.
 //
+//  PERFORMANCE FIX applied:
+//  loadFrames() now force-decodes each webp frame into a plain bitmap at load time.
+//  NSImage with webp defers actual pixel decoding until the first draw call, which
+//  causes hitches mid-animation. Drawing into a new NSImage up-front pays the cost
+//  once during toggle, not on the first rendered frame.
+//
 
 import AppKit
 
 struct Character: Identifiable, Equatable {
     let id: UUID
-    let name: String         // Display name, e.g. "Santa Claus"
-    let framePrefix: String  // Image name prefix, e.g. "santa_clause_walking"
-    let frameCount: Int      // How many frames (usually 6)
-    let frameSize: CGSize    // Rendered size on the menu bar (points)
-    let walkSpeed: CGFloat   // Points moved per tick at 60 fps
-    let ticksPerFrame: Int   // Animation speed (lower = faster)
+    let name: String
+    let framePrefix: String
+    let frameCount: Int
+    let frameSize: CGSize
+    let walkSpeed: CGFloat
+    let ticksPerFrame: Int
 
     init(
         name: String,
@@ -33,17 +39,43 @@ struct Character: Identifiable, Equatable {
         self.ticksPerFrame = ticksPerFrame
     }
 
-    /// Loads all walk-cycle frames from the app bundle.
+    /// Loads and force-decodes all walk-cycle frames from the app bundle.
     /// Expects images named: <framePrefix>_01.webp, _02.webp … _0N.webp
+    ///
+    /// Force-decoding: NSImage(named:) with webp is lazy — the compressed bytes are
+    /// loaded but pixels aren't decoded until first draw. Calling draw() into a fresh
+    /// NSImage here forces that work onto the calling thread (background, via toggleWalk)
+    /// so the animation loop never stalls waiting for a decode.
     func loadFrames() -> [NSImage] {
         (1...frameCount).compactMap { index in
             let name = String(format: "%@_%02d", framePrefix, index)
-            return NSImage(named: name)
+            guard let source = NSImage(named: name) else { return nil }
+            return source.forceDecoded()
         }
     }
 
     /// Returns the first frame as a preview image for the card thumbnail.
     var thumbnail: NSImage? {
         NSImage(named: String(format: "%@_01", framePrefix))
+    }
+}
+
+// MARK: - NSImage force-decode helper
+
+private extension NSImage {
+    /// Returns a new NSImage whose pixels are fully decoded into a bitmap.
+    /// Safe to call from any thread.
+    func forceDecoded() -> NSImage {
+        let decoded = NSImage(size: size)
+        decoded.lockFocus()
+        NSGraphicsContext.current?.imageInterpolation = .none
+        draw(
+            in: NSRect(origin: .zero, size: size),
+            from: NSRect(origin: .zero, size: size),
+            operation: .copy,
+            fraction: 1.0
+        )
+        decoded.unlockFocus()
+        return decoded
     }
 }
