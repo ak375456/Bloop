@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import AppKit
 
 struct HangerSidebarView: View {
     @EnvironmentObject var walker: MenuBarWalker
@@ -49,7 +50,7 @@ struct HangerSidebarView: View {
                     .padding(.vertical, 4)
 
                     VStack(alignment: .leading) {
-                        Text("Rotation: \(Int(config.rotationAngle.wrappedValue))°")
+                        Text("Rotation: \(Int(config.rotationAngle.wrappedValue))")
                             .font(.caption).foregroundStyle(.secondary)
                         Slider(value: config.rotationAngle, in: -180...180)
                     }
@@ -84,7 +85,6 @@ struct HangerSidebarView: View {
 
                     if config.wrappedValue.rope != nil {
 
-                        // Style chips
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Style")
                                 .font(.caption).foregroundStyle(.secondary)
@@ -128,7 +128,6 @@ struct HangerSidebarView: View {
                         }
                         .padding(.vertical, 4)
 
-                        // Rope size
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Rope Size: \(Int(config.wrappedValue.rope?.size ?? 40))")
                                 .font(.caption).foregroundStyle(.secondary)
@@ -146,7 +145,6 @@ struct HangerSidebarView: View {
                         }
                         .padding(.vertical, 4)
 
-                        // Rope vertical position
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Rope Vertical: \(Int(config.wrappedValue.rope?.verticalOffset ?? 0))px")
                                 .font(.caption).foregroundStyle(.secondary)
@@ -164,7 +162,6 @@ struct HangerSidebarView: View {
                         }
                         .padding(.vertical, 4)
 
-                        // Rope horizontal nudge
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Rope Horizontal: \(Int(config.wrappedValue.rope?.horizontalOffset ?? 0))px")
                                 .font(.caption).foregroundStyle(.secondary)
@@ -330,6 +327,8 @@ private struct LinkPickerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+
+            // ── Mode selector ────────────────────────────────────────
             HStack(spacing: 6) {
                 ForEach(Mode.allCases, id: \.self) { m in
                     Button {
@@ -348,52 +347,21 @@ private struct LinkPickerView: View {
                 }
             }
 
+            // ── Mode content ─────────────────────────────────────────
             switch mode {
             case .none:
                 EmptyView()
+
             case .app:
-                if loadingApps {
-                    ProgressView("Loading apps…").font(.caption)
-                } else {
-                    TextField("Search apps", text: $appSearch)
-                        .textFieldStyle(.roundedBorder).font(.caption)
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 2) {
-                            ForEach(filteredApps) { app in
-                                Button {
-                                    link = .app(bundleID: app.id, name: app.name)
-                                } label: {
-                                    HStack(spacing: 8) {
-                                        if let icon = app.icon {
-                                            Image(nsImage: icon).resizable()
-                                                .frame(width: 18, height: 18)
-                                        }
-                                        Text(app.name).font(.caption).foregroundColor(.primary)
-                                        Spacer()
-                                        if case .app(let bid, _) = link, bid == app.id {
-                                            Image(systemName: "checkmark")
-                                                .font(.caption2).foregroundColor(.accentColor)
-                                        }
-                                    }
-                                    .padding(.horizontal, 6).padding(.vertical, 4)
-                                    .background(
-                                        link == .app(bundleID: app.id, name: app.name)
-                                            ? Color.accentColor.opacity(0.1) : Color.clear
-                                    )
-                                    .cornerRadius(4)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    .frame(maxHeight: 160)
-                }
+                appPickerContent
+
             case .url:
                 TextField("https://example.com", text: $urlText)
                     .textFieldStyle(.roundedBorder).font(.caption)
                     .onSubmit { link = .url(urlText) }
                 Button("Set URL") { link = .url(urlText) }
                     .font(.caption).disabled(urlText.isEmpty)
+
             case .shortcut:
                 TextField("Shortcut name", text: $shortcutText)
                     .textFieldStyle(.roundedBorder).font(.caption)
@@ -404,12 +372,15 @@ private struct LinkPickerView: View {
                     .font(.caption2).foregroundStyle(.secondary)
             }
 
+            // ── Current link badge ───────────────────────────────────
             if link != .none {
                 HStack(spacing: 6) {
                     Image(systemName: link.icon).font(.caption2)
                     Text(link.displayName).font(.caption).lineLimit(1)
                     Spacer()
-                    Button { link = .none; mode = .none } label: {
+                    Button {
+                        link = .none; mode = .none
+                    } label: {
                         Image(systemName: "xmark.circle.fill")
                             .font(.caption).foregroundColor(.secondary)
                     }
@@ -423,26 +394,227 @@ private struct LinkPickerView: View {
         .onAppear { syncModeFromLink() }
     }
 
-    private var filteredApps: [InstalledApp] {
-        appSearch.isEmpty ? apps : apps.filter {
-            $0.name.localizedCaseInsensitiveContains(appSearch)
+    // MARK: - App picker UI
+
+    @ViewBuilder
+    private var appPickerContent: some View {
+        if loadingApps {
+            HStack(spacing: 8) {
+                ProgressView().scaleEffect(0.75)
+                Text("Loading apps…").font(.caption).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+
+        } else if apps.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("No apps found.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("Retry") { loadApps() }
+                    .font(.caption)
+                    .buttonStyle(.bordered)
+            }
+
+        } else {
+            // Search bar — .plain style so SwiftUI Form chrome never swallows key events
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
+                TextField("Search apps…", text: $appSearch)
+                    .font(.caption)
+                    .textFieldStyle(.plain)
+                    .autocorrectionDisabled()
+
+                if !appSearch.isEmpty {
+                    Button { appSearch = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(Color(NSColor.controlBackgroundColor))
+            .cornerRadius(7)
+            .overlay(
+                RoundedRectangle(cornerRadius: 7)
+                    .strokeBorder(Color.gray.opacity(0.25), lineWidth: 0.5)
+            )
+
+            // Results list
+            let results = filteredApps
+            if results.isEmpty {
+                Text("No apps match \"\(appSearch)\"")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 6)
+            } else {
+                ScrollView(.vertical, showsIndicators: true) {
+                    LazyVStack(alignment: .leading, spacing: 1) {
+                        ForEach(results) { app in
+                            appRow(app)
+                        }
+                    }
+                    .padding(.vertical, 2)
+                }
+                .frame(maxHeight: 180)
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(7)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 7)
+                        .strokeBorder(Color.gray.opacity(0.2), lineWidth: 0.5)
+                )
+            }
         }
     }
 
-    private func loadApps() {
-        loadingApps = true
-        Task { @MainActor in
-            apps = InstalledApp.fetchAll()
-            loadingApps = false
+    @ViewBuilder
+    private func appRow(_ app: InstalledApp) -> some View {
+        let isSelected: Bool = {
+            if case .app(let bid, _) = link { return bid == app.id }
+            return false
+        }()
+
+        Button {
+            link = .app(bundleID: app.id, name: app.name)
+        } label: {
+            HStack(spacing: 8) {
+                if let icon = app.icon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .interpolation(.high)
+                        .frame(width: 20, height: 20)
+                } else {
+                    Image(systemName: "app.dashed")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 20, height: 20)
+                }
+
+                Text(app.name)
+                    .font(.caption)
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+
+                Spacer()
+
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.accentColor)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+            .background(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Filtering
+
+    private var filteredApps: [InstalledApp] {
+        let query = appSearch.trimmingCharacters(in: .whitespaces)
+        guard !query.isEmpty else { return apps }
+        let words = query.lowercased().split(separator: " ").map(String.init)
+        return apps.filter { app in
+            let name = app.name.lowercased()
+            return words.allSatisfy { name.contains($0) }
         }
     }
+
+    // MARK: - App loading
+
+    private func loadApps() {
+        guard !loadingApps else { return }
+        loadingApps = true
+        Task.detached(priority: .userInitiated) {
+            let fetched = Self.scanInstalledApps()
+            await MainActor.run {
+                self.apps = fetched
+                self.loadingApps = false
+            }
+        }
+    }
+
+    /// Scans all standard macOS app locations directly.
+    /// Bypasses InstalledApp.fetchAll() entirely — runs on a background thread.
+    private static func scanInstalledApps() -> [InstalledApp] {
+        let fm = FileManager.default
+        let ws = NSWorkspace.shared
+
+        var searchDirs: [URL] = [
+            URL(fileURLWithPath: "/Applications"),
+            URL(fileURLWithPath: "/Applications/Utilities"),
+            URL(fileURLWithPath: "/System/Applications"),
+            URL(fileURLWithPath: "/System/Applications/Utilities"),
+            URL(fileURLWithPath: "/System/Library/CoreServices"),
+        ]
+        // Add ~/Applications if it exists
+        if let userApps = fm.urls(for: .applicationDirectory,
+                                   in: .userDomainMask).first {
+            searchDirs.append(userApps)
+        }
+
+        var seen   = Set<String>()
+        var result = [InstalledApp]()
+
+        for dir in searchDirs {
+            guard let entries = try? fm.contentsOfDirectory(
+                at: dir,
+                includingPropertiesForKeys: [.nameKey],
+                options: [.skipsHiddenFiles, .skipsSubdirectoryDescendants]
+            ) else { continue }
+
+            for url in entries where url.pathExtension == "app" {
+                guard let bundle   = Bundle(url: url),
+                      let bundleID = bundle.bundleIdentifier,
+                      !bundleID.isEmpty,
+                      !seen.contains(bundleID)
+                else { continue }
+
+                seen.insert(bundleID)
+
+                // Pick the best available display name.
+                // NSWorkspace on macOS has no localizedDescription(forApplicationAt:) —
+                // that is iOS-only. Use CFBundle keys directly instead.
+                let displayName  = bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+                let bundleName   = bundle.object(forInfoDictionaryKey: "CFBundleName") as? String
+                let name: String = (displayName?.nilIfEmpty)
+                    ?? (bundleName?.nilIfEmpty)
+                    ?? url.deletingPathExtension().lastPathComponent
+
+                let icon = ws.icon(forFile: url.path)
+                result.append(InstalledApp(id: bundleID, name: name, icon: icon))
+            }
+        }
+
+        return result.sorted {
+            $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+        }
+    }
+
+    // MARK: - Sync mode from existing link value
 
     private func syncModeFromLink() {
         switch link {
         case .none:            mode = .none
-        case .app:             mode = .app
+        case .app:             mode = .app;      loadApps()
         case .url(let s):      mode = .url;      urlText = s
         case .shortcut(let s): mode = .shortcut; shortcutText = s
         }
     }
+}
+
+// MARK: - String helper
+
+private extension String {
+    /// Returns nil when the string is empty, self otherwise.
+    /// Lets us chain optional name lookups with ?? cleanly.
+    var nilIfEmpty: String? { isEmpty ? nil : self }
 }

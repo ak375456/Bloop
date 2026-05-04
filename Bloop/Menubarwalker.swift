@@ -30,8 +30,6 @@ struct RenderItem: Sendable {
 
 // MARK: - AnimationEngine
 // Owns all mutable animation state. Runs on its own actor — never touches @MainActor.
-// Sendable conformance is safe: all stored types are either value types or CGImage
-// (which is a thread-safe Core Foundation object).
 
 actor AnimationEngine {
 
@@ -97,8 +95,6 @@ actor AnimationEngine {
 }
 
 // MARK: - CharacterProxy
-// Lightweight @Published-safe stand-in used only by the sidebar config UI.
-// Holds no frames or CGImages.
 
 final class CharacterProxy: Identifiable {
     let id: UUID
@@ -114,7 +110,7 @@ final class CharacterProxy: Identifiable {
 @MainActor
 final class MenuBarWalker: ObservableObject {
 
-    // ── Hangers ─────────────────────────────────────────────────────────────
+    // ── Hangers ──────────────────────────────────────────────────────────────
 
     struct ActiveHanger: Identifiable {
         let id: UUID
@@ -224,12 +220,10 @@ final class MenuBarWalker: ObservableObject {
         )
     }
 
-    // ── Walking characters ───────────────────────────────────────────────────
+    // ── Walking characters ────────────────────────────────────────────────────
 
-    // The animation engine owns all mutable frame state on its own actor
     private let engine = AnimationEngine()
 
-    // @Published only for the sidebar config UI
     @Published var activeCharacters: [UUID: CharacterProxy] = [:]
 
     private var displayLink: CADisplayLink?
@@ -341,9 +335,6 @@ final class MenuBarWalker: ObservableObject {
         let screenWidth = NSScreen.main?.frame.width ?? 1440
         let engine = self.engine
 
-        // Ask the engine (its own actor) to tick and return a render snapshot.
-        // The snapshot is [RenderItem] which is Sendable, so crossing actor
-        // boundaries is safe. Then hand it to the canvas on the main thread.
         Task { @MainActor [weak self, weak canvas] in
             guard self != nil, let canvas else { return }
             let items = await engine.tick(screenWidth: screenWidth)
@@ -363,7 +354,7 @@ final class MenuBarWalker: ObservableObject {
         win.orderFrontRegardless()
     }
 
-    // MARK: Click monitor
+    // MARK: - Click monitor
 
     private func startClickMonitor() {
         guard clickMonitor == nil else { return }
@@ -379,23 +370,65 @@ final class MenuBarWalker: ObservableObject {
 
     private func handleGlobalClick(event: NSEvent) {
         guard let screen = NSScreen.main else { return }
-        let pt = event.locationInWindow
+
+        // NSEvent.mouseLocation gives the correct screen-space point for global monitors.
+        // event.locationInWindow is unreliable here because the event belongs to
+        // whatever window was frontmost — not our overlay.
+        let screenPt = NSEvent.mouseLocation
+
+        // The overlay window's coordinate space: origin is bottom-left of the window,
+        // which sits at (screen.minX, screen.maxY - windowHeight).
+        let windowH: CGFloat
+        let hasExtended = activeHangers.values.contains { $0.config.extendedDrop }
+        windowH = hasExtended ? screen.frame.height : 300
+
+        let windowOriginY = screen.frame.maxY - windowH
+
+        // Convert screen point → overlay-window-local point
+        let localPt = CGPoint(
+            x: screenPt.x - screen.frame.minX,
+            y: screenPt.y - windowOriginY
+        )
+
         for h in activeHangers.values {
             guard h.config.isInteractive, h.config.link != .none else { continue }
-            let windowH: CGFloat = h.config.extendedDrop ? screen.frame.height : 300
-            let windowBottom = screen.frame.maxY - windowH
-            let charY = windowBottom + windowH - (h.config.size / 2 + h.config.verticalOffset)
-            let half  = h.config.size / 2
-            let rect  = CGRect(x: h.config.horizontalPosition - half, y: charY - half,
-                               width: h.config.size, height: h.config.size)
-            if rect.contains(pt) { h.config.link.trigger(); return }
+
+            // Character centre in overlay-window space.
+            // config.horizontalPosition is centre-X.
+            // config.verticalOffset is distance from the window TOP (y=0 in SwiftUI/top-left),
+            // so in bottom-left window coords: centreY = windowH - verticalOffset - size/2
+            let centrX = h.config.horizontalPosition
+            let centrY = windowH - h.config.verticalOffset - h.config.size / 2
+
+            let half = h.config.size / 2
+            let hitRect = CGRect(
+                x: centrX - half,
+                y: centrY - half,
+                width:  h.config.size,
+                height: h.config.size
+            )
+
+            if hitRect.contains(localPt) {
+                // ── Fire click animation ──────────────────────────────────
+                NotificationCenter.default.post(
+                    name: .hangerDidReceiveClick,
+                    object: nil,
+                    userInfo: ["id": h.id]
+                )
+
+                // ── Open the link after a short delay so the squish
+                //    is visible before the system switches apps / opens URLs
+                let link = h.config.link
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                    link.trigger()
+                }
+                return
+            }
         }
     }
 }
 
 // MARK: - CharacterCanvasView
-// Plain NSView. Receives [RenderItem] each frame and draws via CGContext.
-// No SwiftUI, no layer diffing, no per-frame allocations beyond the snapshot array.
 
 final class CharacterCanvasView: NSView {
 
@@ -414,13 +447,11 @@ final class CharacterCanvasView: NSView {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         ctx.clear(bounds)
 
-        // NSGraphicsContext wraps CGContext; set interpolation via NSGraphicsContext
         NSGraphicsContext.current?.imageInterpolation = .none
 
         let items = renderItems
         for item in items {
             let half = item.size / 2
-            // NSView Y=0 is bottom; our y is distance from window top, so invert
             let rect = CGRect(
                 x: item.x - half,
                 y: bounds.height - item.y - half,
