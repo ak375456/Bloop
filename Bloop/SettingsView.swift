@@ -57,9 +57,9 @@ struct SettingsView: View {
                 // About Section
                 Section {
                     VStack(alignment: .leading, spacing: 8) {
-                        Text("About Bloop")
+                        Text("About MenuBar Pets")
                             .font(.headline)
-                        Text("Bloop brings fun, animated and hanging characters directly to your macOS screen. Let them take a stroll while you work, adding a little bit of joy to your desktop experience.")
+                        Text("MenuBar Pets brings fun, animated and hanging characters directly to your macOS screen. Let them take a stroll while you work, adding a little bit of joy to your desktop experience.")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .lineLimit(nil)
@@ -80,7 +80,7 @@ struct SettingsView: View {
                 // Support & Legal Section
                 Section {
                     // Feedback Email Link
-                    Link(destination: URL(string: "mailto:ak375456@gmail.com?subject=Bloop%20Feedback")!) {
+                    Link(destination: URL(string: "mailto:ak375456@gmail.com?subject=MenuBar Pets%20Feedback")!) {
                         HStack {
                             Label("Send Feedback", systemImage: "envelope")
                             Spacer()

@@ -16,11 +16,13 @@ struct HangingCharacter: Identifiable, Equatable, AnyHangingCharacter {
     let id: UUID
     let name: String
     let imageName: String
+    let isPro: Bool
 
-    init(name: String, imageName: String) {
+    init(name: String, imageName: String, isPro: Bool = false) {
         self.id        = UUID()
         self.name      = name
         self.imageName = imageName
+        self.isPro     = isPro
     }
 
     var image: NSImage?     { NSImage(named: imageName) }

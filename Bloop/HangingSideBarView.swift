@@ -12,6 +12,10 @@ struct HangerSidebarView: View {
 
     @State private var showSaved = false
     @State private var showNudge = false
+    @State private var showPaywall = false
+
+    // Pull in the shared StoreKit instance
+    @ObservedObject private var storeKit = StoreKitManager.shared
 
     var body: some View {
         let isActive = selectedID != nil && walker.isHanging(characterID: selectedID!)
@@ -185,16 +189,61 @@ struct HangerSidebarView: View {
 
                 // ── On Click ────────────────────────────────────
                 Section {
-                    Toggle(isOn: config.isInteractive) {
-                        Text("Enable Click").font(.caption)
-                    }
-                    .padding(.vertical, 4)
-                    .help("Makes the character clickable on screen.")
+                    if storeKit.isProUnlocked {
+                        // ── Pro: show the real controls ──
+                        Toggle(isOn: config.isInteractive) {
+                            Text("Enable Click").font(.caption)
+                        }
+                        .padding(.vertical, 4)
+                        .help("Makes the character clickable on screen.")
 
-                    if config.isInteractive.wrappedValue {
-                        LinkPickerView(link: config.link)
-                            .padding(.vertical, 4)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        if config.isInteractive.wrappedValue {
+                            LinkPickerView(link: config.link)
+                                .padding(.vertical, 4)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    } else {
+                        // ── Free: locked banner ──
+                        Button {
+                            showPaywall = true
+                        } label: {
+                            HStack(spacing: 10) {
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .fill(Color.accentColor.opacity(0.12))
+                                        .frame(width: 30, height: 30)
+                                    Image(systemName: "lock.fill")
+                                        .font(.system(size: 13))
+                                        .foregroundStyle(Color.accentColor)
+                                }
+
+                                VStack(alignment: .leading, spacing: 2) {
+                                    HStack(spacing: 5) {
+                                        Text("Enable Click")
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundColor(.primary)
+                                        Text("PRO")
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundColor(.white)
+                                            .padding(.horizontal, 5)
+                                            .padding(.vertical, 2)
+                                            .background(Color.accentColor)
+                                            .cornerRadius(4)
+                                    }
+                                    Text("Link characters to apps, URLs or Shortcuts")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.secondary)
+                                }
+
+                                Spacer()
+
+                                Image(systemName: "chevron.right")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.vertical, 6)
+                        }
+                        .buttonStyle(.plain)
                     }
                 } header: {
                     Text("On Click")
@@ -263,6 +312,11 @@ struct HangerSidebarView: View {
         .formStyle(.grouped)
         .frame(minWidth: 240)
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: showNudge)
+        .sheet(isPresented: $showPaywall) {
+            ProPaywallView(storeKit: storeKit, onPurchased: {
+                showPaywall = false
+            })
+        }
     }
 
     private func maxDrop(extended: Bool) -> CGFloat {
@@ -416,7 +470,6 @@ private struct LinkPickerView: View {
             }
 
         } else {
-            // Search bar — .plain style so SwiftUI Form chrome never swallows key events
             HStack(spacing: 6) {
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 11))
@@ -445,7 +498,6 @@ private struct LinkPickerView: View {
                     .strokeBorder(Color.gray.opacity(0.25), lineWidth: 0.5)
             )
 
-            // Results list
             let results = filteredApps
             if results.isEmpty {
                 Text("No apps match \"\(appSearch)\"")
@@ -516,8 +568,6 @@ private struct LinkPickerView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Filtering
-
     private var filteredApps: [InstalledApp] {
         let query = appSearch.trimmingCharacters(in: .whitespaces)
         guard !query.isEmpty else { return apps }
@@ -527,8 +577,6 @@ private struct LinkPickerView: View {
             return words.allSatisfy { name.contains($0) }
         }
     }
-
-    // MARK: - App loading
 
     private func loadApps() {
         guard !loadingApps else { return }
@@ -542,8 +590,6 @@ private struct LinkPickerView: View {
         }
     }
 
-    /// Scans all standard macOS app locations directly.
-    /// Bypasses InstalledApp.fetchAll() entirely — runs on a background thread.
     private static func scanInstalledApps() -> [InstalledApp] {
         let fm = FileManager.default
         let ws = NSWorkspace.shared
@@ -555,7 +601,6 @@ private struct LinkPickerView: View {
             URL(fileURLWithPath: "/System/Applications/Utilities"),
             URL(fileURLWithPath: "/System/Library/CoreServices"),
         ]
-        // Add ~/Applications if it exists
         if let userApps = fm.urls(for: .applicationDirectory,
                                    in: .userDomainMask).first {
             searchDirs.append(userApps)
@@ -580,9 +625,6 @@ private struct LinkPickerView: View {
 
                 seen.insert(bundleID)
 
-                // Pick the best available display name.
-                // NSWorkspace on macOS has no localizedDescription(forApplicationAt:) —
-                // that is iOS-only. Use CFBundle keys directly instead.
                 let displayName  = bundle.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
                 let bundleName   = bundle.object(forInfoDictionaryKey: "CFBundleName") as? String
                 let name: String = (displayName?.nilIfEmpty)
@@ -599,8 +641,6 @@ private struct LinkPickerView: View {
         }
     }
 
-    // MARK: - Sync mode from existing link value
-
     private func syncModeFromLink() {
         switch link {
         case .none:            mode = .none
@@ -614,7 +654,5 @@ private struct LinkPickerView: View {
 // MARK: - String helper
 
 private extension String {
-    /// Returns nil when the string is empty, self otherwise.
-    /// Lets us chain optional name lookups with ?? cleanly.
     var nilIfEmpty: String? { isEmpty ? nil : self }
 }
