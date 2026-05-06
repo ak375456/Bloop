@@ -326,119 +326,18 @@ private struct SectionDivider: View {
     }
 }
 
-// MARK: - Sidebar Settings View
+// MARK: - Sidebar View
 
 private struct SidebarView: View {
     @EnvironmentObject var walker: MenuBarWalker
     let selectedID: UUID?
-
-    @State private var showSaved = false
-    @State private var showNudge = false
 
     var body: some View {
         let isActive = selectedID != nil && walker.isWalking(characterID: selectedID!)
 
         Form {
             if let id = selectedID, isActive {
-                let config = walker.configBinding(for: id)
-
-                Section {
-                    Toggle(isOn: config.extendedVertical) {
-                        Text("Extended Drop").font(.caption)
-                    }
-                    .padding(.vertical, 4)
-                    .help("Allows the character to move all the way down to the bottom of the screen.")
-
-                    VStack(alignment: .leading) {
-                        Text("Vertical Position")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Slider(value: config.verticalOffset,
-                               in: -10...maxVerticalOffset(extended: config.extendedVertical.wrappedValue))
-                    }
-                    .padding(.vertical, 4)
-
-                    VStack(alignment: .leading) {
-                        Text("Movement Speed: \(String(format: "%.1f", config.movementSpeed.wrappedValue)) px/f")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Slider(value: config.movementSpeed, in: 0.1...10.0)
-                    }
-                    .padding(.vertical, 4)
-
-                    VStack(alignment: .leading) {
-                        Text("Character Size: \(Int(config.characterSize.wrappedValue))")
-                            .font(.caption).foregroundStyle(.secondary)
-                        Slider(value: config.characterSize, in: 16...120)
-                    }
-                    .padding(.vertical, 4)
-
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text("Animation Speed")
-                            .font(.caption).foregroundStyle(.secondary)
-                        HStack(spacing: 8) {
-                            AnimChip(title: "50ms",  targetTicks: 3, currentTicks: config.ticksPerFrame)
-                            AnimChip(title: "80ms",  targetTicks: 5, currentTicks: config.ticksPerFrame)
-                            AnimChip(title: "100ms", targetTicks: 6, currentTicks: config.ticksPerFrame)
-                            AnimChip(title: "140ms", targetTicks: 8, currentTicks: config.ticksPerFrame)
-                        }
-                    }
-                    .padding(.vertical, 4)
-
-                } header: { Text("Live Controls") }
-
-                Section {
-                    Toggle(isOn: $showNudge) {
-                        Text("Nudge Position").font(.caption)
-                    }
-                    .padding(.vertical, 4)
-
-                    if showNudge {
-                        VStack(spacing: 8) {
-                            Text("Vertical")
-                                .font(.caption).foregroundStyle(.secondary)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            HStack(spacing: 12) {
-                                Button {
-                                    config.verticalOffset.wrappedValue = max(-10, config.verticalOffset.wrappedValue - 1)
-                                } label: {
-                                    Image(systemName: "arrow.up").frame(maxWidth: .infinity)
-                                }
-                                .buttonStyle(.bordered).controlSize(.regular)
-
-                                Text("\(Int(config.verticalOffset.wrappedValue)) px")
-                                    .font(.system(size: 11, design: .monospaced))
-                                    .foregroundStyle(.secondary).frame(minWidth: 50)
-
-                                Button {
-                                    config.verticalOffset.wrappedValue = min(
-                                        maxVerticalOffset(extended: config.extendedVertical.wrappedValue),
-                                        config.verticalOffset.wrappedValue + 1)
-                                } label: {
-                                    Image(systemName: "arrow.down").frame(maxWidth: .infinity)
-                                }
-                                .buttonStyle(.bordered).controlSize(.regular)
-                            }
-                        }
-                        .padding(.vertical, 4)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
-                } header: { Text("Nudge") }
-
-                Section {
-                    Button {
-                        walker.saveSettings(for: id)
-                        withAnimation { showSaved = true }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                            withAnimation { showSaved = false }
-                        }
-                    } label: {
-                        Label(showSaved ? "Saved!" : "Save Settings",
-                              systemImage: showSaved ? "checkmark" : "square.and.arrow.down")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(showSaved ? .green : .accentColor)
-                    .controlSize(.regular)
-                }
+                SidebarControlsView(characterID: id)
             } else {
                 VStack {
                     Spacer()
@@ -452,7 +351,138 @@ private struct SidebarView: View {
         }
         .formStyle(.grouped)
         .frame(minWidth: 240)
+    }
+}
+
+// MARK: - Sidebar Controls View
+
+private struct SidebarControlsView: View {
+    @EnvironmentObject var walker: MenuBarWalker
+    let characterID: UUID
+
+    @State private var showSaved = false
+    @State private var showNudge = false
+    @State private var config: CharacterConfig = CharacterConfig(
+        verticalOffset: 0, movementSpeed: 1, ticksPerFrame: 5,
+        characterSize: 36, extendedVertical: false)
+
+    var body: some View {
+        Section {
+            Toggle(isOn: $config.extendedVertical) {
+                Text("Extended Drop").font(.caption)
+            }
+            .padding(.vertical, 4)
+            .help("Allows the character to move all the way down to the bottom of the screen.")
+
+            VStack(alignment: .leading) {
+                Text("Vertical Position")
+                    .font(.caption).foregroundStyle(.secondary)
+                Slider(value: $config.verticalOffset,
+                       in: -10...maxVerticalOffset(extended: config.extendedVertical))
+            }
+            .padding(.vertical, 4)
+
+            VStack(alignment: .leading) {
+                Text("Movement Speed: \(String(format: "%.1f", config.movementSpeed)) px/f")
+                    .font(.caption).foregroundStyle(.secondary)
+                Slider(value: $config.movementSpeed, in: 0.1...10.0)
+            }
+            .padding(.vertical, 4)
+
+            VStack(alignment: .leading) {
+                Text("Character Size: \(Int(config.characterSize))")
+                    .font(.caption).foregroundStyle(.secondary)
+                Slider(value: $config.characterSize, in: 16...120)
+            }
+            .padding(.vertical, 4)
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Animation Speed")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    AnimChip(title: "50ms",  targetTicks: 3, currentTicks: $config.ticksPerFrame)
+                    AnimChip(title: "80ms",  targetTicks: 5, currentTicks: $config.ticksPerFrame)
+                    AnimChip(title: "100ms", targetTicks: 6, currentTicks: $config.ticksPerFrame)
+                    AnimChip(title: "140ms", targetTicks: 8, currentTicks: $config.ticksPerFrame)
+                }
+            }
+            .padding(.vertical, 4)
+
+        } header: { Text("Live Controls") }
+
+        Section {
+            Toggle(isOn: $showNudge) {
+                Text("Nudge Position").font(.caption)
+            }
+            .padding(.vertical, 4)
+
+            if showNudge {
+                VStack(spacing: 8) {
+                    Text("Vertical")
+                        .font(.caption).foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    HStack(spacing: 12) {
+                        Button {
+                            config.verticalOffset = max(-10, config.verticalOffset - 1)
+                        } label: {
+                            Image(systemName: "arrow.up").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered).controlSize(.regular)
+
+                        Text("\(Int(config.verticalOffset)) px")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary).frame(minWidth: 50)
+
+                        Button {
+                            config.verticalOffset = min(
+                                maxVerticalOffset(extended: config.extendedVertical),
+                                config.verticalOffset + 1)
+                        } label: {
+                            Image(systemName: "arrow.down").frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered).controlSize(.regular)
+                    }
+                }
+                .padding(.vertical, 4)
+                .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+        } header: { Text("Nudge") }
+
+        Section {
+            Button {
+                walker.saveSettings(for: characterID)
+                withAnimation { showSaved = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                    withAnimation { showSaved = false }
+                }
+            } label: {
+                Label(showSaved ? "Saved!" : "Save Settings",
+                      systemImage: showSaved ? "checkmark" : "square.and.arrow.down")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(showSaved ? .green : .accentColor)
+            .controlSize(.regular)
+        }
+        .onAppear {
+            if let proxy = walker.activeCharacters[characterID] {
+                config = proxy.config
+            }
+        }
+        .onChange(of: config.extendedVertical) { pushConfig() }
+        .onChange(of: config.verticalOffset)   { pushConfig() }
+        .onChange(of: config.movementSpeed)    { pushConfig() }
+        .onChange(of: config.characterSize)    { pushConfig() }
+        .onChange(of: config.ticksPerFrame)    { pushConfig() }
         .animation(.spring(response: 0.3, dampingFraction: 0.7), value: showNudge)
+    }
+
+    private func pushConfig() {
+        guard walker.activeCharacters[characterID] != nil else { return }
+        walker.activeCharacters[characterID]!.config = config
+        let engine = walker.engine
+        Task { await engine.updateConfig(config, for: characterID) }
+        walker.updateWalkWindowFramePublic()
     }
 
     func maxVerticalOffset(extended: Bool) -> CGFloat {
@@ -499,31 +529,22 @@ private struct CharacterCard: View {
             RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(Color(nsColor: .controlBackgroundColor))
                 .shadow(color: .black.opacity(isSelected ? 0.18 : 0.07),
-                        radius: isSelected ? 16 : 6,
-                        y: isSelected ? 8 : 2)
+                        radius: isSelected ? 16 : 6, y: isSelected ? 8 : 2)
 
             VStack(spacing: 0) {
                 ZStack(alignment: .topTrailing) {
                     thumbnailView
-                        .frame(height: 110)
-                        .clipped()
-                        // Dim the thumbnail when locked
+                        .frame(height: 110).clipped()
                         .opacity(isLocked ? 0.45 : 1.0)
 
-                    // PRO badge
                     if isLocked {
                         HStack(spacing: 3) {
-                            Image(systemName: "lock.fill")
-                                .font(.system(size: 7, weight: .bold))
-                            Text("PRO")
-                                .font(.system(size: 8, weight: .bold))
+                            Image(systemName: "lock.fill").font(.system(size: 7, weight: .bold))
+                            Text("PRO").font(.system(size: 8, weight: .bold))
                         }
                         .foregroundColor(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Color.accentColor)
-                        .cornerRadius(6)
-                        .padding(8)
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(Color.accentColor).cornerRadius(6).padding(8)
                     }
                 }
 
@@ -532,36 +553,29 @@ private struct CharacterCard: View {
                 Text(character.name)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(isLocked ? .secondary : .primary)
-                    .lineLimit(1)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
+                    .lineLimit(1).padding(.horizontal, 10).padding(.vertical, 8)
 
                 if isSelected && !isLocked {
                     Button { onPlay() } label: {
                         Label(isWalking ? "Stop" : "Walk",
                               systemImage: isWalking ? "stop.fill" : "play.fill")
-                            .font(.system(size: 12, weight: .bold))
-                            .frame(maxWidth: .infinity)
+                            .font(.system(size: 12, weight: .bold)).frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(isWalking ? .red : .accentColor)
                     .controlSize(.regular)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, 10).padding(.bottom, 12)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
 
                 if isLocked {
                     Button { onPlay() } label: {
                         Label("Unlock", systemImage: "lock.open.fill")
-                            .font(.system(size: 12, weight: .bold))
-                            .frame(maxWidth: .infinity)
+                            .font(.system(size: 12, weight: .bold)).frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.accentColor)
+                    .buttonStyle(.borderedProminent).tint(.accentColor)
                     .controlSize(.regular)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, 10).padding(.bottom, 12)
                 }
             }
         }
@@ -573,18 +587,11 @@ private struct CharacterCard: View {
     @ViewBuilder
     private var thumbnailView: some View {
         if let img = character.thumbnail {
-            Image(nsImage: img)
-                .resizable().interpolation(.medium)
-                .scaledToFit().padding(16)
+            Image(nsImage: img).resizable().interpolation(.medium).scaledToFit().padding(16)
         } else {
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.accentColor.opacity(0.12))
-                .overlay(
-                    Image(systemName: "figure.walk")
-                        .font(.system(size: 36))
-                        .foregroundStyle(Color.accentColor.opacity(0.5))
-                )
-                .padding(16)
+            RoundedRectangle(cornerRadius: 10).fill(Color.accentColor.opacity(0.12))
+                .overlay(Image(systemName: "figure.walk").font(.system(size: 36))
+                    .foregroundStyle(Color.accentColor.opacity(0.5))).padding(16)
         }
     }
 }
@@ -608,24 +615,17 @@ private struct HangerCard: View {
 
             VStack(spacing: 0) {
                 ZStack(alignment: .topTrailing) {
-                    thumbnailView
-                        .frame(height: 110)
-                        .clipped()
+                    thumbnailView.frame(height: 110).clipped()
                         .opacity(isLocked ? 0.45 : 1.0)
 
                     if isLocked {
                         HStack(spacing: 3) {
-                            Image(systemName: "lock.fill")
-                                .font(.system(size: 7, weight: .bold))
-                            Text("PRO")
-                                .font(.system(size: 8, weight: .bold))
+                            Image(systemName: "lock.fill").font(.system(size: 7, weight: .bold))
+                            Text("PRO").font(.system(size: 8, weight: .bold))
                         }
                         .foregroundColor(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 3)
-                        .background(Color.accentColor)
-                        .cornerRadius(6)
-                        .padding(8)
+                        .padding(.horizontal, 6).padding(.vertical, 3)
+                        .background(Color.accentColor).cornerRadius(6).padding(8)
                     }
                 }
 
@@ -634,36 +634,29 @@ private struct HangerCard: View {
                 Text(character.name)
                     .font(.system(size: 12, weight: .semibold, design: .rounded))
                     .foregroundStyle(isLocked ? .secondary : .primary)
-                    .lineLimit(1)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
+                    .lineLimit(1).padding(.horizontal, 10).padding(.vertical, 8)
 
                 if isSelected && !isLocked {
                     Button { onPlay() } label: {
                         Label(isHanging ? "Remove" : "Hang",
                               systemImage: isHanging ? "stop.fill" : "pin.fill")
-                            .font(.system(size: 12, weight: .bold))
-                            .frame(maxWidth: .infinity)
+                            .font(.system(size: 12, weight: .bold)).frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(isHanging ? .red : .accentColor)
                     .controlSize(.regular)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, 10).padding(.bottom, 12)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
 
                 if isLocked {
                     Button { onPlay() } label: {
                         Label("Unlock", systemImage: "lock.open.fill")
-                            .font(.system(size: 12, weight: .bold))
-                            .frame(maxWidth: .infinity)
+                            .font(.system(size: 12, weight: .bold)).frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .tint(.accentColor)
+                    .buttonStyle(.borderedProminent).tint(.accentColor)
                     .controlSize(.regular)
-                    .padding(.horizontal, 10)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, 10).padding(.bottom, 12)
                 }
             }
         }

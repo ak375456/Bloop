@@ -80,7 +80,7 @@ struct SettingsView: View {
                 // Support & Legal Section
                 Section {
                     // Feedback Email Link
-                    Link(destination: URL(string: "mailto:ak375456@gmail.com?subject=MenuBar Pets%20Feedback")!) {
+                    Link(destination: URL(string: "mailto:ak375456@gmail.com?subject=Bloop%20Feedback")!) {
                         HStack {
                             Label("Send Feedback", systemImage: "envelope")
                             Spacer()

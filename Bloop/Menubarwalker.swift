@@ -18,7 +18,6 @@ struct CharacterConfig: Codable {
 }
 
 // MARK: - RenderItem
-// Tiny Sendable value passed from the animation actor to the canvas each frame.
 
 struct RenderItem: Sendable {
     let cgImage: CGImage
@@ -29,7 +28,6 @@ struct RenderItem: Sendable {
 }
 
 // MARK: - AnimationEngine
-// Owns all mutable animation state. Runs on its own actor — never touches @MainActor.
 
 actor AnimationEngine {
 
@@ -62,7 +60,6 @@ actor AnimationEngine {
         characters[id]?.config = config
     }
 
-    /// Advances every character by one tick and returns a render snapshot.
     func tick(screenWidth: CGFloat) -> [RenderItem] {
         var items = [RenderItem]()
         items.reserveCapacity(characters.count)
@@ -110,7 +107,7 @@ final class CharacterProxy: Identifiable {
 @MainActor
 final class MenuBarWalker: ObservableObject {
 
-    // ── Hangers ──────────────────────────────────────────────────────────────
+    // ── Hangers ───────────────────────────────────────────────────────────────
 
     struct ActiveHanger: Identifiable {
         let id: UUID
@@ -220,9 +217,9 @@ final class MenuBarWalker: ObservableObject {
         )
     }
 
-    // ── Walking characters ────────────────────────────────────────────────────
+    // ── Walking characters ─────────────────────────────────────────────────────
 
-    private let engine = AnimationEngine()
+    let engine = AnimationEngine()
 
     @Published var activeCharacters: [UUID: CharacterProxy] = [:]
 
@@ -240,7 +237,7 @@ final class MenuBarWalker: ObservableObject {
             Task { await engine.remove(id: character.id) }
             if activeCharacters.isEmpty { stopAll() } else { updateWalkWindowFrame() }
         } else {
-            let frames   = character.loadFrames()
+            let frames = character.loadFrames()
             guard !frames.isEmpty else { return }
             let cgFrames = frames.compactMap {
                 $0.cgImage(forProposedRect: nil, context: nil, hints: nil)
@@ -314,6 +311,11 @@ final class MenuBarWalker: ObservableObject {
         )
     }
 
+    // Public wrapper so SidebarControlsView can call it
+    func updateWalkWindowFramePublic() {
+        updateWalkWindowFrame()
+    }
+
     // MARK: Display link (~30 fps)
 
     private func startDisplayLink() {
@@ -370,21 +372,11 @@ final class MenuBarWalker: ObservableObject {
 
     private func handleGlobalClick(event: NSEvent) {
         guard let screen = NSScreen.main else { return }
-
-        // NSEvent.mouseLocation gives the correct screen-space point for global monitors.
-        // event.locationInWindow is unreliable here because the event belongs to
-        // whatever window was frontmost — not our overlay.
         let screenPt = NSEvent.mouseLocation
-
-        // The overlay window's coordinate space: origin is bottom-left of the window,
-        // which sits at (screen.minX, screen.maxY - windowHeight).
         let windowH: CGFloat
         let hasExtended = activeHangers.values.contains { $0.config.extendedDrop }
         windowH = hasExtended ? screen.frame.height : 300
-
         let windowOriginY = screen.frame.maxY - windowH
-
-        // Convert screen point → overlay-window-local point
         let localPt = CGPoint(
             x: screenPt.x - screen.frame.minX,
             y: screenPt.y - windowOriginY
@@ -392,36 +384,16 @@ final class MenuBarWalker: ObservableObject {
 
         for h in activeHangers.values {
             guard h.config.isInteractive, h.config.link != .none else { continue }
-
-            // Character centre in overlay-window space.
-            // config.horizontalPosition is centre-X.
-            // config.verticalOffset is distance from the window TOP (y=0 in SwiftUI/top-left),
-            // so in bottom-left window coords: centreY = windowH - verticalOffset - size/2
             let centrX = h.config.horizontalPosition
             let centrY = windowH - h.config.verticalOffset - h.config.size / 2
-
             let half = h.config.size / 2
-            let hitRect = CGRect(
-                x: centrX - half,
-                y: centrY - half,
-                width:  h.config.size,
-                height: h.config.size
-            )
-
+            let hitRect = CGRect(x: centrX - half, y: centrY - half,
+                                 width: h.config.size, height: h.config.size)
             if hitRect.contains(localPt) {
-                // ── Fire click animation ──────────────────────────────────
                 NotificationCenter.default.post(
-                    name: .hangerDidReceiveClick,
-                    object: nil,
-                    userInfo: ["id": h.id]
-                )
-
-                // ── Open the link after a short delay so the squish
-                //    is visible before the system switches apps / opens URLs
+                    name: .hangerDidReceiveClick, object: nil, userInfo: ["id": h.id])
                 let link = h.config.link
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-                    link.trigger()
-                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) { link.trigger() }
                 return
             }
         }
@@ -446,9 +418,7 @@ final class CharacterCanvasView: NSView {
     override func draw(_ dirtyRect: NSRect) {
         guard let ctx = NSGraphicsContext.current?.cgContext else { return }
         ctx.clear(bounds)
-
         NSGraphicsContext.current?.imageInterpolation = .none
-
         let items = renderItems
         for item in items {
             let half = item.size / 2
